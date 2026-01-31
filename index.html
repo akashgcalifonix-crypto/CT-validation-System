@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Califonix | BT Quality Gate</title>
+    <style>
+        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        
+        /* THEMES */
+        .bg-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
+        @keyframes blink-pass { 50% { background: #2ecc71; } }
+        .bg-fail { background: var(--fail) !important; }
+        .bg-skip { background: var(--skip) !important; color: black !important; }
+        .bg-ready { background: var(--ready) !important; }
+
+        /* COMPACT DISPLAY (4-5 INCH) */
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s; }
+        .verdict-text { font-size: 80px; font-weight: 900; margin: 0; line-height: 1; }
+        .mac-text { font-size: 16px; font-family: monospace; margin-top: 10px; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 5px; }
+        
+        .logo { position: absolute; top: 10px; left: 10px; height: 25px; }
+
+        /* OVERLAY */
+        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 320px; color: white; }
+    </style>
+</head>
+<body id="body-bg" class="bg-ready">
+
+    <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
+
+    <div id="overlay">
+        <h2 style="color:orange;">BT VALIDATOR START</h2>
+        <button class="setup-btn" style="background:#e67e22;" onclick="pickLogFile()">1. SELECT MASTER LOG (NETWORK)</button>
+        <button id="btnScan" class="setup-btn" style="background:#2ecc71; display:none;" onclick="startBTScan()">2. START BLUETOOTH SCAN</button>
+        <p style="color:#666; font-size: 12px; text-align: center; padding: 0 20px;">Use Chrome/Edge only. <br>Network file permission required.</p>
+    </div>
+
+    <div id="view">
+        <div id="dispStatus" class="status-text">READY</div>
+        <div id="dispMac" class="mac-text">Waiting for Earbud...</div>
+    </div>
+
+    <script>
+        let masterFileHandle, lastMAC = "";
+        let scanActive = false;
+
+        async function pickLogFile() {
+            try {
+                [masterFileHandle] = await window.showOpenFilePicker();
+                document.getElementById('btnScan').style.display = "block";
+            } catch (e) { alert("File selection required!"); }
+        }
+
+        async function startBTScan() {
+            try {
+                // Browser asks for permission to scan
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true
+                });
+                
+                document.getElementById('overlay').style.display = "none";
+                document.getElementById('dispMac').innerText = "Scanning Active...";
+                
+                // Industrial Logic: Trigger verification when device is paired/connected
+                validateUnit(device.id.substring(0, 17).toUpperCase()); // Basic MAC simulation
+            } catch (e) { alert("Bluetooth Scan failed: " + e.message); }
+        }
+
+        async function validateUnit(mac) {
+            try {
+                const file = await masterFileHandle.getFile();
+                const text = await file.text();
+                const rows = text.split('\n');
+                
+                let verdict = "SKIP"; // Default
+
+                for (let i = rows.length - 1; i >= 0; i--) {
+                    if (rows[i].toUpperCase().includes(mac.toUpperCase())) {
+                        verdict = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
+                        break;
+                    }
+                }
+                showResult(mac, verdict);
+            } catch (e) { console.error("Read error"); }
+        }
+
+        function showResult(mac, res) {
+            const bg = document.getElementById('body-bg');
+            const status = document.getElementById('dispStatus');
+            document.getElementById('dispMac').innerText = mac;
+            
+            if (res === "PASS") {
+                status.innerText = "PASS";
+                bg.className = "bg-pass";
+            } else if (res === "FAIL") {
+                status.innerText = "FAIL";
+                bg.className = "bg-fail";
+            } else {
+                status.innerText = "SKIP";
+                bg.className = "bg-skip";
+            }
+
+            // Click to reset after testing
+            setTimeout(resetUI, 5000);
+        }
+
+        function resetUI() {
+            document.getElementById('body-bg').className = "bg-ready";
+            document.getElementById('dispStatus').innerText = "READY";
+            document.getElementById('dispMac').innerText = "Place bud to scan...";
+        }
+    </script>
+</body>
+</html>
