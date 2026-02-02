@@ -2,138 +2,149 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Califonix | Quality Gate Validator</title>
+    <title>Califonix | BT Quality Gate</title>
     <style>
-        :root { --pass: #1b5e20; --fail: #8b0000; --skip: #cc0000; --ready: #121212; }
+        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        .logo { height: 35px; position: absolute; top: 10px; left: 15px; }
         
         /* THEMES */
-        .bg-pass { background: var(--pass) !important; animation: blink-pass 0.8s infinite; }
+        .bg-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
         @keyframes blink-pass { 50% { background: #2ecc71; } }
         .bg-fail { background: var(--fail) !important; }
-        .bg-skip { background: #ff4444 !important; color: black !important; } /* Light Red */
+        .bg-skip { background: var(--skip) !important; color: black !important; }
         .bg-ready { background: var(--ready) !important; }
 
-        /* COMPACT DISPLAY FOR CRYSOUND TOP */
-        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.3s; }
-        .status-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1; }
-        .mac-display { font-size: 24px; color: #00ff00; font-family: monospace; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 5px; margin-top: 15px; border: 1px solid #333; }
-        
-        .logo { position: absolute; top: 10px; left: 15px; height: 30px; }
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .verdict-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 5px; }
+        .mac-display { font-size: 28px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 8px 30px; border-radius: 10px; margin-top: 15px; border: 1px solid #333; }
 
-        /* SETUP OVERLAY */
-        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
-        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 350px; color: white; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .setup-btn { padding: 18px 40px; font-size: 20px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; width: 380px; color: white; }
+        .stats { position: fixed; bottom: 15px; left: 15px; font-size: 16px; opacity: 0.6; text-align: left; }
+        #log { position: fixed; bottom: 15px; right: 15px; font-size: 11px; color: #444; font-family: monospace; }
     </style>
 </head>
 <body id="ui-body" class="bg-ready">
 
     <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
 
-    <div id="overlay">
-        <h2 style="color:orange;">VALIDATOR INITIALIZATION</h2>
-        <button class="setup-btn" style="background:#e67e22;" onclick="pickMasterLog()">1. SELECT MASTER LOG (Station A File)</button>
-        <button id="btnTrigger" class="setup-btn" style="background:cyan; color:black; display:none;" onclick="pickTriggerLog()">2. SELECT SONALAB LOG (Current PC File)</button>
-        <p style="color:#666; font-size: 12px;">Manager must select both files to start the gate.</p>
+    <div id="setup-overlay" class="overlay">
+        <h2 style="color:orange; letter-spacing: 2px;">INDUSTRIAL BT VALIDATOR</h2>
+        <button class="setup-btn" style="background:#e67e22;" onclick="pickMasterLog()">1. SELECT STATION-A LOG (CSV)</button>
+        <button id="btnScan" class="setup-btn" style="background:#2ecc71; display:none;" onclick="startIndustrialScan()">2. START AUTO-SCANNING</button>
+        <p style="color:#666; font-size:12px;">Manager must select the shared Network Log file.</p>
     </div>
 
-    <div id="view" onclick="resetUI()">
-        <div id="dispStatus" class="status-text">READY</div>
-        <div id="dispMac" class="mac-display">Waiting for Sonalab Scan...</div>
-        <p style="color:#444; font-size:10px; margin-top:10px;">(Click anywhere to Manual Reset)</p>
+    <div id="view">
+        <div id="dispStatus" class="verdict-text">READY</div>
+        <div id="dispMac" class="mac-display">Waiting for Earbud...</div>
     </div>
+
+    <div class="stats">
+        OK: <span id="s-pass">0</span> | REJ: <span id="s-fail">0</span> | TOT: <span id="s-total">0</span>
+    </div>
+
+    <div id="log">System: Ready</div>
 
     <script>
-        let masterHandle, triggerHandle;
-        let lastMAC = "";
-        let resetTimer;
+        let masterFileHandle, lastProcessedMac = "", scanTimer;
+        let counts = {total: 0, pass: 0, fail: 0};
 
         async function pickMasterLog() {
             try {
-                [masterHandle] = await window.showOpenFilePicker();
-                document.getElementById('btnTrigger').style.display = "block";
-            } catch (e) { alert("Selection failed!"); }
+                [masterFileHandle] = await window.showOpenFilePicker();
+                document.getElementById('btnScan').style.display = "block";
+            } catch (e) { alert("File selection failed!"); }
         }
 
-        async function pickTriggerLog() {
+        async function startIndustrialScan() {
             try {
-                [triggerHandle] = await window.showOpenFilePicker();
-                document.getElementById('overlay').style.display = "none";
-                // High-speed file watching (Every 500ms)
-                setInterval(watchSonalab, 500);
-            } catch (e) { alert("Selection failed!"); }
-        }
+                // Requesting LE Scan Permission
+                const scan = await navigator.bluetooth.requestLEScan({
+                    keepRepeatedDevices: false,
+                    acceptAllDevices: true
+                });
 
-        async function watchSonalab() {
-            try {
-                const file = await triggerHandle.getFile();
-                const text = await file.text();
-                const lines = text.trim().split('\n');
-                const latestLine = lines[lines.length - 1]; // Get last line
+                document.getElementById('setup-overlay').style.display = "none";
+                printLog("Scanning for earbuds nearby...");
 
-                // Extract MAC format (XX:XX:XX...)
-                const macMatch = latestLine.match(/([0-9A-F]{2}[:]){5}[0-9A-F]{2}/i);
-                
-                if (macMatch) {
-                    let currentMac = macMatch[0].toUpperCase();
-                    if (currentMac !== lastMAC) {
-                        lastMAC = currentMac;
-                        validateAgainstMaster(currentMac);
-                    }
-                }
-            } catch (e) { console.error("File watch error"); }
-        }
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    let mac = event.device.id.substring(0,17).toUpperCase();
+                    let rssi = event.rssi;
 
-        async function validateAgainstMaster(mac) {
-            try {
-                const file = await masterHandle.getFile();
-                const text = await file.text();
-                const rows = text.split('\n');
-                
-                let result = "SKIP"; // If MAC not found
-
-                // Search from bottom to top for latest entry
-                for (let i = rows.length - 1; i >= 0; i--) {
-                    if (rows[i].toUpperCase().includes(mac)) {
-                        if (rows[i].toUpperCase().includes("PASS")) {
-                            result = "PASS";
-                        } else {
-                            result = "FAIL";
+                    // Industrial Filter: Sirf wo bud uthao jo tool ke 1-2 feet ke andar hai
+                    if (rssi > -55) { 
+                        if (mac !== lastProcessedMac) {
+                            lastProcessedMac = mac;
+                            printLog("Found Device: " + mac + " (RSSI: " + rssi + ")");
+                            validateEntry(mac);
+                            
+                            // Auto-Reset logic if no new signals for 6 seconds
+                            clearTimeout(scanTimer);
+                            scanTimer = setTimeout(resetUI, 6000);
                         }
+                    }
+                });
+
+            } catch (e) {
+                alert("BT Error! Please enable Experimental Flags in Chrome.\n" + e.message);
+            }
+        }
+
+        async function validateEntry(mac) {
+            try {
+                const file = await masterFileHandle.getFile();
+                const text = await file.text();
+                const lines = text.split('\n');
+                
+                let result = "SKIP"; // Default
+
+                // Search from bottom (latest) to top
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    if (lines[i].toUpperCase().includes(mac.toUpperCase())) {
+                        result = lines[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
                         break;
                     }
                 }
-                showVerdict(mac, result);
-            } catch (e) { console.error("Master log read error"); }
+                updateUI(mac, result);
+            } catch (e) { printLog("CSV Read Error"); }
         }
 
-        function showVerdict(mac, res) {
+        function updateUI(mac, res) {
             const body = document.getElementById('ui-body');
             const status = document.getElementById('dispStatus');
             document.getElementById('dispMac').innerText = mac;
-
+            
+            counts.total++;
             if (res === "PASS") {
                 status.innerText = "PASS";
                 body.className = "bg-pass";
+                counts.pass++;
             } else if (res === "FAIL") {
                 status.innerText = "FAIL";
                 body.className = "bg-fail";
+                counts.fail++;
             } else {
                 status.innerText = "SKIP";
                 body.className = "bg-skip";
+                counts.fail++;
             }
-
-            // AUTO RESET TIMER:
-            // Industrial Logic: Reset after 10 seconds if no new bud
-            clearTimeout(resetTimer);
-            resetTimer = setTimeout(resetUI, 10000); 
+            
+            document.getElementById('s-total').innerText = counts.total;
+            document.getElementById('s-pass').innerText = counts.pass;
+            document.getElementById('s-fail').innerText = counts.total - counts.pass;
         }
 
         function resetUI() {
             document.getElementById('ui-body').className = "bg-ready";
             document.getElementById('dispStatus').innerText = "READY";
-            document.getElementById('dispMac').innerText = "Waiting for Sonalab Scan...";
-            lastMAC = "";
+            document.getElementById('dispMac').innerText = "Waiting for earbud...";
+            lastProcessedMac = "";
+        }
+
+        function printLog(m) {
+            document.getElementById('log').innerText = "Log: " + m;
         }
     </script>
 </body>
