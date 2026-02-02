@@ -2,114 +2,138 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Califonix | BT Quality Gate</title>
+    <title>Califonix | Quality Gate Validator</title>
     <style>
-        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        :root { --pass: #1b5e20; --fail: #8b0000; --skip: #cc0000; --ready: #121212; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
         
         /* THEMES */
-        .bg-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
+        .bg-pass { background: var(--pass) !important; animation: blink-pass 0.8s infinite; }
         @keyframes blink-pass { 50% { background: #2ecc71; } }
         .bg-fail { background: var(--fail) !important; }
-        .bg-skip { background: var(--skip) !important; color: black !important; }
+        .bg-skip { background: #ff4444 !important; color: black !important; } /* Light Red */
         .bg-ready { background: var(--ready) !important; }
 
-        /* COMPACT DISPLAY (4-5 INCH) */
-        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s; }
-        .verdict-text { font-size: 80px; font-weight: 900; margin: 0; line-height: 1; }
-        .mac-text { font-size: 16px; font-family: monospace; margin-top: 10px; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 5px; }
+        /* COMPACT DISPLAY FOR CRYSOUND TOP */
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.3s; }
+        .status-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1; }
+        .mac-display { font-size: 24px; color: #00ff00; font-family: monospace; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 5px; margin-top: 15px; border: 1px solid #333; }
         
-        .logo { position: absolute; top: 10px; left: 10px; height: 25px; }
+        .logo { position: absolute; top: 10px; left: 15px; height: 30px; }
 
-        /* OVERLAY */
-        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
-        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 320px; color: white; }
+        /* SETUP OVERLAY */
+        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 350px; color: white; }
     </style>
 </head>
-<body id="body-bg" class="bg-ready">
+<body id="ui-body" class="bg-ready">
 
     <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
 
     <div id="overlay">
-        <h2 style="color:orange;">BT VALIDATOR START</h2>
-        <button class="setup-btn" style="background:#e67e22;" onclick="pickLogFile()">1. SELECT MASTER LOG (NETWORK)</button>
-        <button id="btnScan" class="setup-btn" style="background:#2ecc71; display:none;" onclick="startBTScan()">2. START BLUETOOTH SCAN</button>
-        <p style="color:#666; font-size: 12px; text-align: center; padding: 0 20px;">Use Chrome/Edge only. <br>Network file permission required.</p>
+        <h2 style="color:orange;">VALIDATOR INITIALIZATION</h2>
+        <button class="setup-btn" style="background:#e67e22;" onclick="pickMasterLog()">1. SELECT MASTER LOG (Station A File)</button>
+        <button id="btnTrigger" class="setup-btn" style="background:cyan; color:black; display:none;" onclick="pickTriggerLog()">2. SELECT SONALAB LOG (Current PC File)</button>
+        <p style="color:#666; font-size: 12px;">Manager must select both files to start the gate.</p>
     </div>
 
-    <div id="view">
+    <div id="view" onclick="resetUI()">
         <div id="dispStatus" class="status-text">READY</div>
-        <div id="dispMac" class="mac-text">Waiting for Earbud...</div>
+        <div id="dispMac" class="mac-display">Waiting for Sonalab Scan...</div>
+        <p style="color:#444; font-size:10px; margin-top:10px;">(Click anywhere to Manual Reset)</p>
     </div>
 
     <script>
-        let masterFileHandle, lastMAC = "";
-        let scanActive = false;
+        let masterHandle, triggerHandle;
+        let lastMAC = "";
+        let resetTimer;
 
-        async function pickLogFile() {
+        async function pickMasterLog() {
             try {
-                [masterFileHandle] = await window.showOpenFilePicker();
-                document.getElementById('btnScan').style.display = "block";
-            } catch (e) { alert("File selection required!"); }
+                [masterHandle] = await window.showOpenFilePicker();
+                document.getElementById('btnTrigger').style.display = "block";
+            } catch (e) { alert("Selection failed!"); }
         }
 
-        async function startBTScan() {
+        async function pickTriggerLog() {
             try {
-                // Browser asks for permission to scan
-                const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true
-                });
-                
+                [triggerHandle] = await window.showOpenFilePicker();
                 document.getElementById('overlay').style.display = "none";
-                document.getElementById('dispMac').innerText = "Scanning Active...";
-                
-                // Industrial Logic: Trigger verification when device is paired/connected
-                validateUnit(device.id.substring(0, 17).toUpperCase()); // Basic MAC simulation
-            } catch (e) { alert("Bluetooth Scan failed: " + e.message); }
+                // High-speed file watching (Every 500ms)
+                setInterval(watchSonalab, 500);
+            } catch (e) { alert("Selection failed!"); }
         }
 
-        async function validateUnit(mac) {
+        async function watchSonalab() {
             try {
-                const file = await masterFileHandle.getFile();
+                const file = await triggerHandle.getFile();
+                const text = await file.text();
+                const lines = text.trim().split('\n');
+                const latestLine = lines[lines.length - 1]; // Get last line
+
+                // Extract MAC format (XX:XX:XX...)
+                const macMatch = latestLine.match(/([0-9A-F]{2}[:]){5}[0-9A-F]{2}/i);
+                
+                if (macMatch) {
+                    let currentMac = macMatch[0].toUpperCase();
+                    if (currentMac !== lastMAC) {
+                        lastMAC = currentMac;
+                        validateAgainstMaster(currentMac);
+                    }
+                }
+            } catch (e) { console.error("File watch error"); }
+        }
+
+        async function validateAgainstMaster(mac) {
+            try {
+                const file = await masterHandle.getFile();
                 const text = await file.text();
                 const rows = text.split('\n');
                 
-                let verdict = "SKIP"; // Default
+                let result = "SKIP"; // If MAC not found
 
+                // Search from bottom to top for latest entry
                 for (let i = rows.length - 1; i >= 0; i--) {
-                    if (rows[i].toUpperCase().includes(mac.toUpperCase())) {
-                        verdict = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
+                    if (rows[i].toUpperCase().includes(mac)) {
+                        if (rows[i].toUpperCase().includes("PASS")) {
+                            result = "PASS";
+                        } else {
+                            result = "FAIL";
+                        }
                         break;
                     }
                 }
-                showResult(mac, verdict);
-            } catch (e) { console.error("Read error"); }
+                showVerdict(mac, result);
+            } catch (e) { console.error("Master log read error"); }
         }
 
-        function showResult(mac, res) {
-            const bg = document.getElementById('body-bg');
+        function showVerdict(mac, res) {
+            const body = document.getElementById('ui-body');
             const status = document.getElementById('dispStatus');
             document.getElementById('dispMac').innerText = mac;
-            
+
             if (res === "PASS") {
                 status.innerText = "PASS";
-                bg.className = "bg-pass";
+                body.className = "bg-pass";
             } else if (res === "FAIL") {
                 status.innerText = "FAIL";
-                bg.className = "bg-fail";
+                body.className = "bg-fail";
             } else {
                 status.innerText = "SKIP";
-                bg.className = "bg-skip";
+                body.className = "bg-skip";
             }
 
-            // Click to reset after testing
-            setTimeout(resetUI, 5000);
+            // AUTO RESET TIMER:
+            // Industrial Logic: Reset after 10 seconds if no new bud
+            clearTimeout(resetTimer);
+            resetTimer = setTimeout(resetUI, 10000); 
         }
 
         function resetUI() {
-            document.getElementById('body-bg').className = "bg-ready";
+            document.getElementById('ui-body').className = "bg-ready";
             document.getElementById('dispStatus').innerText = "READY";
-            document.getElementById('dispMac').innerText = "Place bud to scan...";
+            document.getElementById('dispMac').innerText = "Waiting for Sonalab Scan...";
+            lastMAC = "";
         }
     </script>
 </body>
