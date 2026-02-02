@@ -2,86 +2,85 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Califonix | Quality Gate</title>
+    <title>Califonix | BT Quality Gate</title>
     <style>
-        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
-        body { font-family: 'Segoe UI', Arial; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        :root { --pass: #1b5e20; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        .logo { height: 25px; position: absolute; top: 10px; left: 15px; }
         
-        /* THEMES */
-        .theme-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
+        /* RESULT THEMES */
+        .bg-pass { background: var(--pass) !important; animation: blink-pass 0.8s infinite; }
         @keyframes blink-pass { 50% { background: #2ecc71; } }
-        .theme-fail { background: var(--fail) !important; }
-        .theme-skip { background: var(--skip) !important; color: black !important; }
-        .theme-ready { background: var(--ready) !important; }
+        .bg-fail { background: var(--fail) !important; }
+        .bg-skip { background: var(--skip) !important; color: black !important; }
+        .bg-ready { background: var(--ready) !important; }
 
-        /* COMPACT DISPLAY (FOR CRYSOUND TOP) */
-        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s; }
-        .status-text { font-size: 80px; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1; }
-        .mac-display { font-size: 20px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 5px; margin-top: 10px; }
-        
-        .logo { position: absolute; top: 10px; left: 10px; height: 25px; }
+        /* COMPACT DISPLAY (4-5 INCH) */
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .status-text { font-size: 80px; font-weight: 900; margin: 0; text-transform: uppercase; }
+        .mac-display { font-size: 18px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 5px; margin-top: 5px; }
 
-        #setup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
-        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 350px; color: white; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; width: 320px; color: white; }
     </style>
 </head>
-<body id="ui-body" class="theme-ready">
+<body id="ui-body" class="bg-ready">
 
     <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
 
-    <div id="setup-overlay">
-        <h2 style="color:orange;">CRY-SOUND QUALITY GATE</h2>
-        <button class="setup-btn" style="background:cyan; color:black;" onclick="connectBlueBox()">1. CONNECT MAC SCANNER (BLUE BOX)</button>
-        <button id="btnMaster" class="setup-btn" style="background:#e67e22; display:none;" onclick="pickMasterLog()">2. SELECT MASTER LOG (Z:/ DRIVE)</button>
-        <p style="color:#666; font-size: 12px;">Step 1: Serial Connection | Step 2: Shared CSV File</p>
+    <div id="overlay" class="overlay">
+        <h2 style="color:orange;">BT QUALITY GATE START</h2>
+        <button class="btn" style="background:#e67e22;" onclick="pickMasterFile()">1. SELECT MASTER LOG (NETWORK)</button>
+        <button id="btnScan" class="btn" style="background:#2ecc71; display:none;" onclick="startBTAutoScan()">2. ACTIVATE AUTO-SCAN</button>
+        <p style="color:#666; font-size:12px;">Permission needed for background BT scanning.</p>
     </div>
 
     <div id="view">
         <div id="dispStatus" class="status-text">READY</div>
-        <div id="dispMac" class="mac-display">Waiting for scan...</div>
+        <div id="dispMac" class="mac-display">Waiting for BT Signal...</div>
     </div>
 
     <script>
-        let bbPort, masterFileHandle;
-        let lastMAC = "";
-
-        async function connectBlueBox() {
-            try {
-                bbPort = await navigator.serial.requestPort();
-                await bbPort.open({ baudRate: 460800 }); // Blue Box High Speed
-                document.getElementById('btnMaster').style.display = "block";
-            } catch (e) { alert("Blue Box Connection Error!"); }
-        }
-
-        async function pickMasterLog() {
+        let masterFileHandle, lastMAC = "", scanTimeout;
+        
+        async function pickMasterFile() {
             try {
                 [masterFileHandle] = await window.showOpenFilePicker();
-                document.getElementById('setup-overlay').style.display = "none";
-                readBlueBox();
-            } catch (e) { alert("Station A Log selection required!"); }
+                document.getElementById('btnScan').style.display = "block";
+            } catch (e) { alert("File Selection Required!"); }
         }
 
-        async function readBlueBox() {
-            const reader = bbPort.readable.getReader();
-            let buffer = [];
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                value.forEach(b => buffer.push(b));
+        async function startBTAutoScan() {
+            try {
+                const options = { acceptAllDevices: true };
+                document.getElementById('overlay').style.display = "none";
                 
-                // SSCOM Logic: Look for 06 01 Header
-                while (buffer.length >= 8) {
-                    let idx = buffer.indexOf(0x06);
-                    if (idx !== -1 && buffer[idx+1] === 0x01 && buffer.length >= idx + 8) {
-                        let mac = buffer.slice(idx+2, idx+8).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(":");
+                // Chrome background scan request
+                const scan = await navigator.bluetooth.requestLEScan({
+                    keepRepeatedDevices: false,
+                    acceptAllDevices: true
+                });
+
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    let mac = event.device.id.substring(0,17).toUpperCase();
+                    let rssi = event.rssi;
+
+                    // Industrial Filter: Only buds inside the machine (Strong Signal)
+                    // RSSI > -45 means very close
+                    if (rssi > -45) { 
                         if (mac !== lastMAC) {
                             lastMAC = mac;
                             validateWithMaster(mac);
+                            clearTimeout(scanTimeout);
+                            // Auto reset after 6 seconds of signal loss
+                            scanTimeout = setTimeout(resetUI, 6000);
                         }
-                        buffer.splice(0, idx + 8);
-                    } else if (idx === -1) { buffer = []; break; }
-                    else { buffer.shift(); }
-                }
+                    }
+                });
+                
+                document.getElementById('dispStatus').innerText = "SCANNING";
+            } catch (e) { 
+                alert("Error! Did you enable Chrome Flags?\n" + e.message); 
             }
         }
 
@@ -90,42 +89,37 @@
                 const file = await masterFileHandle.getFile();
                 const text = await file.text();
                 const rows = text.split('\n');
-                
-                let verdict = "SKIP"; // If MAC not found
+                let verdict = "SKIP";
 
-                // Latest entry search (bottom to top)
                 for (let i = rows.length - 1; i >= 0; i--) {
                     if (rows[i].toUpperCase().includes(mac.toUpperCase())) {
                         verdict = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
                         break;
                     }
                 }
-                showResult(mac, verdict);
-            } catch (e) { console.error("Network Log Read Error"); }
+                showVerdict(mac, verdict);
+            } catch (e) { console.error("CSV Read Error"); }
         }
 
-        function showResult(mac, res) {
-            const body = document.getElementById('ui-body');
-            const statusDisp = document.getElementById('dispStatus');
+        function showVerdict(mac, res) {
+            const bg = document.getElementById('ui-body');
+            const status = document.getElementById('dispStatus');
             document.getElementById('dispMac').innerText = mac;
             
             if (res === "PASS") {
-                statusDisp.innerText = "PASS";
-                body.className = "theme-pass";
+                status.innerText = "PASS";
+                bg.className = "bg-pass";
             } else if (res === "FAIL") {
-                statusDisp.innerText = "FAIL";
-                body.className = "theme-fail";
+                status.innerText = "FAIL";
+                bg.className = "bg-fail";
             } else {
-                statusDisp.innerText = "SKIP";
-                body.className = "theme-skip";
+                status.innerText = "SKIP";
+                bg.className = "bg-skip";
             }
-
-            // Auto reset after 4 seconds of showing result
-            setTimeout(resetUI, 4000);
         }
 
         function resetUI() {
-            document.getElementById('ui-body').className = "theme-ready";
+            document.getElementById('ui-body').className = "bg-ready";
             document.getElementById('dispStatus').innerText = "READY";
             document.getElementById('dispMac').innerText = "Waiting for scan...";
             lastMAC = "";
