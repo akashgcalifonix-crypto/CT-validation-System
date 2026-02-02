@@ -2,149 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Califonix | BT Quality Gate</title>
+    <title>Califonix | Auto Validator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        :root { --bg: #0c0c0c; --pass: #1b5e20; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        body { font-family: 'Segoe UI', Arial; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
         .logo { height: 35px; position: absolute; top: 10px; left: 15px; }
-        
-        /* THEMES */
-        .bg-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
-        @keyframes blink-pass { 50% { background: #2ecc71; } }
+        .bg-pass { background: #1b5e20 !important; animation: blink 0.8s infinite; }
+        @keyframes blink { 50% { background: #2ecc71; } }
         .bg-fail { background: var(--fail) !important; }
-        .bg-skip { background: var(--skip) !important; color: black !important; }
-        .bg-ready { background: var(--ready) !important; }
-
+        .bg-skip { background: var(--skip) !important; }
         #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .verdict-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 5px; }
-        .mac-display { font-size: 28px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 8px 30px; border-radius: 10px; margin-top: 15px; border: 1px solid #333; }
-
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
-        .setup-btn { padding: 18px 40px; font-size: 20px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; width: 380px; color: white; }
-        .stats { position: fixed; bottom: 15px; left: 15px; font-size: 16px; opacity: 0.6; text-align: left; }
-        #log { position: fixed; bottom: 15px; right: 15px; font-size: 11px; color: #444; font-family: monospace; }
+        .status-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; }
+        .mac-display { font-size: 28px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 10px 40px; border-radius: 10px; margin-top: 15px; }
+        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; }
     </style>
 </head>
-<body id="ui-body" class="bg-ready">
+<body id="ui-body">
 
     <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
 
-    <div id="setup-overlay" class="overlay">
-        <h2 style="color:orange; letter-spacing: 2px;">INDUSTRIAL BT VALIDATOR</h2>
-        <button class="setup-btn" style="background:#e67e22;" onclick="pickMasterLog()">1. SELECT STATION-A LOG (CSV)</button>
-        <button id="btnScan" class="setup-btn" style="background:#2ecc71; display:none;" onclick="startIndustrialScan()">2. START AUTO-SCANNING</button>
-        <p style="color:#666; font-size:12px;">Manager must select the shared Network Log file.</p>
+    <div id="overlay">
+        <button style="padding:20px 40px; font-size:22px; background:#e67e22; color:white; border:none; border-radius:10px; cursor:pointer;" onclick="startSession()">1. SELECT MASTER LOG & START</button>
+        <p style="color:#666; margin-top:10px;">Python BT Helper must be running in background.</p>
     </div>
 
     <div id="view">
-        <div id="dispStatus" class="verdict-text">READY</div>
-        <div id="dispMac" class="mac-display">Waiting for Earbud...</div>
+        <div id="dispStatus" class="status-text">READY</div>
+        <div id="dispMac" class="mac-display">Waiting for BT...</div>
     </div>
-
-    <div class="stats">
-        OK: <span id="s-pass">0</span> | REJ: <span id="s-fail">0</span> | TOT: <span id="s-total">0</span>
-    </div>
-
-    <div id="log">System: Ready</div>
 
     <script>
-        let masterFileHandle, lastProcessedMac = "", scanTimer;
-        let counts = {total: 0, pass: 0, fail: 0};
+        let masterFileHandle;
+        const socket = io("http://localhost:5500");
 
-        async function pickMasterLog() {
-            try {
-                [masterFileHandle] = await window.showOpenFilePicker();
-                document.getElementById('btnScan').style.display = "block";
-            } catch (e) { alert("File selection failed!"); }
+        async function startSession() {
+            [masterFileHandle] = await window.showOpenFilePicker();
+            document.getElementById('overlay').style.display = "none";
         }
 
-        async function startIndustrialScan() {
-            try {
-                // Requesting LE Scan Permission
-                const scan = await navigator.bluetooth.requestLEScan({
-                    keepRepeatedDevices: false,
-                    acceptAllDevices: true
-                });
+        socket.on('new_mac', function(msg) {
+            validate(msg.mac);
+        });
 
-                document.getElementById('setup-overlay').style.display = "none";
-                printLog("Scanning for earbuds nearby...");
+        async function validate(mac) {
+            const file = await masterFileHandle.getFile();
+            const text = await file.text();
+            const rows = text.split('\n');
+            let res = "SKIP";
 
-                navigator.bluetooth.addEventListener('advertisementreceived', event => {
-                    let mac = event.device.id.substring(0,17).toUpperCase();
-                    let rssi = event.rssi;
-
-                    // Industrial Filter: Sirf wo bud uthao jo tool ke 1-2 feet ke andar hai
-                    if (rssi > -55) { 
-                        if (mac !== lastProcessedMac) {
-                            lastProcessedMac = mac;
-                            printLog("Found Device: " + mac + " (RSSI: " + rssi + ")");
-                            validateEntry(mac);
-                            
-                            // Auto-Reset logic if no new signals for 6 seconds
-                            clearTimeout(scanTimer);
-                            scanTimer = setTimeout(resetUI, 6000);
-                        }
-                    }
-                });
-
-            } catch (e) {
-                alert("BT Error! Please enable Experimental Flags in Chrome.\n" + e.message);
-            }
-        }
-
-        async function validateEntry(mac) {
-            try {
-                const file = await masterFileHandle.getFile();
-                const text = await file.text();
-                const lines = text.split('\n');
-                
-                let result = "SKIP"; // Default
-
-                // Search from bottom (latest) to top
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    if (lines[i].toUpperCase().includes(mac.toUpperCase())) {
-                        result = lines[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
-                        break;
-                    }
+            for (let i = rows.length - 1; i >= 0; i--) {
+                if (rows[i].toUpperCase().includes(mac)) {
+                    res = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
+                    break;
                 }
-                updateUI(mac, result);
-            } catch (e) { printLog("CSV Read Error"); }
+            }
+            showResult(mac, res);
         }
 
-        function updateUI(mac, res) {
+        function showResult(mac, res) {
             const body = document.getElementById('ui-body');
             const status = document.getElementById('dispStatus');
             document.getElementById('dispMac').innerText = mac;
             
-            counts.total++;
-            if (res === "PASS") {
-                status.innerText = "PASS";
-                body.className = "bg-pass";
-                counts.pass++;
-            } else if (res === "FAIL") {
-                status.innerText = "FAIL";
-                body.className = "bg-fail";
-                counts.fail++;
-            } else {
-                status.innerText = "SKIP";
-                body.className = "bg-skip";
-                counts.fail++;
-            }
+            if (res === "PASS") { status.innerText = "PASS"; body.className = "bg-pass"; }
+            else if (res === "FAIL") { status.innerText = "FAIL"; body.className = "bg-fail"; }
+            else { status.innerText = "SKIP"; body.className = "bg-skip"; }
             
-            document.getElementById('s-total').innerText = counts.total;
-            document.getElementById('s-pass').innerText = counts.pass;
-            document.getElementById('s-fail').innerText = counts.total - counts.pass;
-        }
-
-        function resetUI() {
-            document.getElementById('ui-body').className = "bg-ready";
-            document.getElementById('dispStatus').innerText = "READY";
-            document.getElementById('dispMac').innerText = "Waiting for earbud...";
-            lastProcessedMac = "";
-        }
-
-        function printLog(m) {
-            document.getElementById('log').innerText = "Log: " + m;
+            setTimeout(() => { 
+                body.className = ""; 
+                status.innerText = "READY"; 
+                document.getElementById('dispMac').innerText = "Waiting for next...";
+            }, 5000);
         }
     </script>
 </body>
