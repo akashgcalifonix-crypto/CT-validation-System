@@ -2,78 +2,133 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Califonix | Auto Validator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <title>Califonix | Quality Gate</title>
     <style>
-        :root { --bg: #0c0c0c; --pass: #1b5e20; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        :root { --pass: #00ff00; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
         body { font-family: 'Segoe UI', Arial; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
-        .logo { height: 35px; position: absolute; top: 10px; left: 15px; }
-        .bg-pass { background: #1b5e20 !important; animation: blink 0.8s infinite; }
-        @keyframes blink { 50% { background: #2ecc71; } }
-        .bg-fail { background: var(--fail) !important; }
-        .bg-skip { background: var(--skip) !important; }
-        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .status-text { font-size: 100px; font-weight: 900; margin: 0; text-transform: uppercase; }
-        .mac-display { font-size: 28px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 10px 40px; border-radius: 10px; margin-top: 15px; }
-        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        /* THEMES */
+        .theme-pass { background: #1b5e20 !important; animation: blink-pass 0.8s infinite; }
+        @keyframes blink-pass { 50% { background: #2ecc71; } }
+        .theme-fail { background: var(--fail) !important; }
+        .theme-skip { background: var(--skip) !important; color: black !important; }
+        .theme-ready { background: var(--ready) !important; }
+
+        /* COMPACT DISPLAY (FOR CRYSOUND TOP) */
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s; }
+        .status-text { font-size: 80px; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1; }
+        .mac-display { font-size: 20px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 5px; margin-top: 10px; }
+        
+        .logo { position: absolute; top: 10px; left: 10px; height: 25px; }
+
+        #setup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .setup-btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; width: 350px; color: white; }
     </style>
 </head>
-<body id="ui-body">
+<body id="ui-body" class="theme-ready">
 
     <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
 
-    <div id="overlay">
-        <button style="padding:20px 40px; font-size:22px; background:#e67e22; color:white; border:none; border-radius:10px; cursor:pointer;" onclick="startSession()">1. SELECT MASTER LOG & START</button>
-        <p style="color:#666; margin-top:10px;">Python BT Helper must be running in background.</p>
+    <div id="setup-overlay">
+        <h2 style="color:orange;">CRY-SOUND QUALITY GATE</h2>
+        <button class="setup-btn" style="background:cyan; color:black;" onclick="connectBlueBox()">1. CONNECT MAC SCANNER (BLUE BOX)</button>
+        <button id="btnMaster" class="setup-btn" style="background:#e67e22; display:none;" onclick="pickMasterLog()">2. SELECT MASTER LOG (Z:/ DRIVE)</button>
+        <p style="color:#666; font-size: 12px;">Step 1: Serial Connection | Step 2: Shared CSV File</p>
     </div>
 
     <div id="view">
         <div id="dispStatus" class="status-text">READY</div>
-        <div id="dispMac" class="mac-display">Waiting for BT...</div>
+        <div id="dispMac" class="mac-display">Waiting for scan...</div>
     </div>
 
     <script>
-        let masterFileHandle;
-        const socket = io("http://localhost:5500");
+        let bbPort, masterFileHandle;
+        let lastMAC = "";
 
-        async function startSession() {
-            [masterFileHandle] = await window.showOpenFilePicker();
-            document.getElementById('overlay').style.display = "none";
+        async function connectBlueBox() {
+            try {
+                bbPort = await navigator.serial.requestPort();
+                await bbPort.open({ baudRate: 460800 }); // Blue Box High Speed
+                document.getElementById('btnMaster').style.display = "block";
+            } catch (e) { alert("Blue Box Connection Error!"); }
         }
 
-        socket.on('new_mac', function(msg) {
-            validate(msg.mac);
-        });
+        async function pickMasterLog() {
+            try {
+                [masterFileHandle] = await window.showOpenFilePicker();
+                document.getElementById('setup-overlay').style.display = "none";
+                readBlueBox();
+            } catch (e) { alert("Station A Log selection required!"); }
+        }
 
-        async function validate(mac) {
-            const file = await masterFileHandle.getFile();
-            const text = await file.text();
-            const rows = text.split('\n');
-            let res = "SKIP";
-
-            for (let i = rows.length - 1; i >= 0; i--) {
-                if (rows[i].toUpperCase().includes(mac)) {
-                    res = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
-                    break;
+        async function readBlueBox() {
+            const reader = bbPort.readable.getReader();
+            let buffer = [];
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                value.forEach(b => buffer.push(b));
+                
+                // SSCOM Logic: Look for 06 01 Header
+                while (buffer.length >= 8) {
+                    let idx = buffer.indexOf(0x06);
+                    if (idx !== -1 && buffer[idx+1] === 0x01 && buffer.length >= idx + 8) {
+                        let mac = buffer.slice(idx+2, idx+8).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(":");
+                        if (mac !== lastMAC) {
+                            lastMAC = mac;
+                            validateWithMaster(mac);
+                        }
+                        buffer.splice(0, idx + 8);
+                    } else if (idx === -1) { buffer = []; break; }
+                    else { buffer.shift(); }
                 }
             }
-            showResult(mac, res);
+        }
+
+        async function validateWithMaster(mac) {
+            try {
+                const file = await masterFileHandle.getFile();
+                const text = await file.text();
+                const rows = text.split('\n');
+                
+                let verdict = "SKIP"; // If MAC not found
+
+                // Latest entry search (bottom to top)
+                for (let i = rows.length - 1; i >= 0; i--) {
+                    if (rows[i].toUpperCase().includes(mac.toUpperCase())) {
+                        verdict = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
+                        break;
+                    }
+                }
+                showResult(mac, verdict);
+            } catch (e) { console.error("Network Log Read Error"); }
         }
 
         function showResult(mac, res) {
             const body = document.getElementById('ui-body');
-            const status = document.getElementById('dispStatus');
+            const statusDisp = document.getElementById('dispStatus');
             document.getElementById('dispMac').innerText = mac;
             
-            if (res === "PASS") { status.innerText = "PASS"; body.className = "bg-pass"; }
-            else if (res === "FAIL") { status.innerText = "FAIL"; body.className = "bg-fail"; }
-            else { status.innerText = "SKIP"; body.className = "bg-skip"; }
-            
-            setTimeout(() => { 
-                body.className = ""; 
-                status.innerText = "READY"; 
-                document.getElementById('dispMac').innerText = "Waiting for next...";
-            }, 5000);
+            if (res === "PASS") {
+                statusDisp.innerText = "PASS";
+                body.className = "theme-pass";
+            } else if (res === "FAIL") {
+                statusDisp.innerText = "FAIL";
+                body.className = "theme-fail";
+            } else {
+                statusDisp.innerText = "SKIP";
+                body.className = "theme-skip";
+            }
+
+            // Auto reset after 4 seconds of showing result
+            setTimeout(resetUI, 4000);
+        }
+
+        function resetUI() {
+            document.getElementById('ui-body').className = "theme-ready";
+            document.getElementById('dispStatus').innerText = "READY";
+            document.getElementById('dispMac').innerText = "Waiting for scan...";
+            lastMAC = "";
         }
     </script>
 </body>
