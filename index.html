@@ -2,342 +2,128 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Battery Stock & Cloud Management</title>
-    <!-- QR Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <title>Califonix | BT Quality Gate</title>
     <style>
-        :root { --primary: #2563eb; --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --border: #e5e7eb; --healthy: #10b981; --warning: #f59e0b; --danger: #ef4444; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; }
+        :root { --pass: #1b5e20; --fail: #8b0000; --skip: #ff6666; --ready: #121212; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        .logo { height: 25px; position: absolute; top: 10px; left: 15px; }
         
-        /* Header & Logo */
-        .header-section { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-        .header-section img { max-height: 55px; border-radius: 4px; }
-        h1, h2 { color: var(--text); margin: 0; }
-        
-        /* Layout Grid */
-        .grid { display: grid; grid-template-columns: 1fr 3fr; gap: 20px; }
-        .card { background: var(--surface); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        
-        /* Form Styles */
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px;}
-        input { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; font-size: 14px; }
-        
-        button { width: 100%; padding: 10px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; margin-bottom: 10px; transition: 0.2s;}
-        button:hover { background: #1d4ed8; }
-        button:disabled { background: #9ca3af; cursor: not-allowed; }
-        
-        .btn-scan { background: var(--healthy); color: white; display: flex; justify-content: center; align-items: center; gap: 8px; }
-        .btn-cancel-edit { background: var(--danger); display: none; }
-        
-        #reader { width: 100%; display: none; margin-bottom: 15px; border-radius: 8px; overflow: hidden; }
-        
-        /* Dashboard Summary Cards */
-        .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-card { padding: 15px; border-radius: 8px; text-align: center; color: white; font-weight: bold; }
-        .bg-blue { background: var(--primary); } .bg-orange { background: var(--warning); } .bg-red { background: var(--danger); }
-        .stat-number { font-size: 24px; margin-top: 5px;}
-        
-        /* Table Styles */
-        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .search-bar { width: 300px; padding: 10px; border: 2px solid var(--border); border-radius: 6px; font-size: 14px; }
-        
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
-        th { background-color: #f9fafb; font-weight: bold; }
-        
-        .badge { padding: 4px 8px; border-radius: 12px; color: white; font-size: 12px; font-weight: bold; }
-        .badge-healthy { background: var(--healthy); } .badge-warning { background: var(--warning); } .badge-danger { background: var(--danger); } .badge-empty { background: #6b7280; }
-        
-        .action-btns { display: flex; gap: 5px; }
-        .btn-icon { width: auto; padding: 6px 10px; font-size: 12px; margin: 0; border-radius: 4px; }
-        .btn-preview { background: #4b5563; } .btn-edit { background: var(--warning); color: black; }
-        
-        #loading { text-align: center; color: var(--primary); font-weight: bold; display: none; padding: 20px;}
-        
-        /* Modal Styles */
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; max-width: 90%; }
-        .modal-content h3 { margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
-        .modal-row { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed var(--border); padding-bottom: 5px;}
-        .modal-close { background: var(--danger); margin-top: 15px; }
+        /* RESULT THEMES */
+        .bg-pass { background: var(--pass) !important; animation: blink-pass 0.8s infinite; }
+        @keyframes blink-pass { 50% { background: #2ecc71; } }
+        .bg-fail { background: var(--fail) !important; }
+        .bg-skip { background: var(--skip) !important; color: black !important; }
+        .bg-ready { background: var(--ready) !important; }
 
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: 1fr; } .search-bar { width: 100%; } }
+        /* COMPACT DISPLAY (4-5 INCH) */
+        #view { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .status-text { font-size: 80px; font-weight: 900; margin: 0; text-transform: uppercase; }
+        .mac-display { font-size: 18px; font-family: monospace; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 5px; margin-top: 5px; }
+
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
+        .btn { padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 10px; width: 320px; color: white; }
     </style>
 </head>
-<body>
+<body id="ui-body" class="bg-ready">
 
-<!-- Preview Details Modal -->
-<div class="modal-overlay" id="previewModal">
-    <div class="modal-content">
-        <h3>🔍 Battery Batch Details</h3>
-        <div id="modalDetails"></div>
-        <button class="modal-close" onclick="closePreview()">Close</button>
+    <img src="https://i.postimg.cc/5y7SN4xc/logo.png" class="logo">
+
+    <div id="overlay" class="overlay">
+        <h2 style="color:orange;">BT QUALITY GATE START</h2>
+        <button class="btn" style="background:#e67e22;" onclick="pickMasterFile()">1. SELECT MASTER LOG (NETWORK)</button>
+        <button id="btnScan" class="btn" style="background:#2ecc71; display:none;" onclick="startBTAutoScan()">2. ACTIVATE AUTO-SCAN</button>
+        <p style="color:#666; font-size:12px;">Permission needed for background BT scanning.</p>
     </div>
-</div>
 
-<div class="container">
-    <div class="header-section">
-        <!-- Logo Integration -->
-        <img src="https://i.postimg.cc/kRSbTd6w/logo.png" alt="Company Logo" onerror="this.style.display='none'">
-        <h1>Battery Cloud Dashboard</h1>
+    <div id="view">
+        <div id="dispStatus" class="status-text">READY</div>
+        <div id="dispMac" class="mac-display">Waiting for BT Signal...</div>
     </div>
-    
-    <div class="grid">
-        <!-- Input Form Section -->
-        <div class="card">
-            <h2 id="formTitle">Add / Update Stock</h2>
-            <button type="button" class="btn-scan" id="startScanBtn">📷 Scan QR Code</button>
-            <div id="reader"></div>
 
-            <form id="batteryForm">
-                <div class="form-group"><label>PO No.</label><input type="text" id="poNo" required></div>
-                <div class="form-group"><label>MPN</label><input type="text" id="mpn" required></div>
-                <div class="form-group"><label>Date of Manufacturing</label><input type="date" id="dom" required></div>
-                <div class="form-group"><label>Stock In</label><input type="number" id="stockIn" min="0" value="0" required></div>
-                <div class="form-group"><label>Stock Out</label><input type="number" id="stockOut" min="0" value="0" required></div>
+    <script>
+        let masterFileHandle, lastMAC = "", scanTimeout;
+        
+        async function pickMasterFile() {
+            try {
+                [masterFileHandle] = await window.showOpenFilePicker();
+                document.getElementById('btnScan').style.display = "block";
+            } catch (e) { alert("File Selection Required!"); }
+        }
+
+        async function startBTAutoScan() {
+            try {
+                const options = { acceptAllDevices: true };
+                document.getElementById('overlay').style.display = "none";
                 
-                <button type="submit" id="submitBtn">Save to Cloud</button>
-                <button type="button" class="btn-cancel-edit" id="cancelEditBtn" onclick="cancelEdit()">❌ Cancel Edit</button>
-            </form>
-        </div>
+                // Chrome background scan request
+                const scan = await navigator.bluetooth.requestLEScan({
+                    keepRepeatedDevices: false,
+                    acceptAllDevices: true
+                });
 
-        <!-- Dashboard Section -->
-        <div>
-            <div class="summary-cards">
-                <div class="stat-card bg-blue"><div>Total Available</div><div class="stat-number" id="totalStock">0</div></div>
-                <div class="stat-card bg-orange"><div>Expiring (≤ 30 Days)</div><div class="stat-number" id="expiringSoon">0</div></div>
-                <div class="stat-card bg-red"><div>Expired</div><div class="stat-number" id="expiredStock">0</div></div>
-            </div>
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    let mac = event.device.id.substring(0,17).toUpperCase();
+                    let rssi = event.rssi;
 
-            <div class="card" style="overflow-x: auto;">
-                <div class="table-header">
-                    <h2>Live Cloud Inventory</h2>
-                    <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Search PO or MPN...">
-                </div>
-                <div id="loading">⏳ Syncing with Google Sheets...</div>
-                <table id="dataTable">
-                    <thead><tr><th>PO No.</th><th>MPN</th><th>DOM</th><th>Stock</th><th>Expiry Date</th><th>Days Left</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="inventoryTable"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // ⚠️ YOUR SPECIFIC GOOGLE SCRIPT URL
-    const GOOGLE_APP_URL = "https://script.google.com/macros/s/AKfycbxWqOSpLsxxcUjXS3l_Fu4kbV78qEubaZH9OfGMdVkT3FDfsV-fjqyxUnB_RjDPHsEc/exec";
-    
-    let inventory = [];
-    let editModeId = null; 
-
-    // --- FETCH DATA FROM GOOGLE SHEETS ---
-    async function fetchCloudData() {
-        document.getElementById('loading').style.display = 'block';
-        document.getElementById('dataTable').style.display = 'none';
-        
-        try {
-            const response = await fetch(GOOGLE_APP_URL);
-            inventory = await response.json();
-            renderDashboard();
-        } catch (error) {
-            console.error(error);
-            alert("Error loading data from Cloud. Make sure you are on a live web server (GitHub Pages).");
-        }
-
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('dataTable').style.display = 'table';
-    }
-
-    // --- SUBMIT DATA TO CLOUD (ADD OR EDIT) ---
-    document.getElementById('batteryForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const submitBtn = document.getElementById('submitBtn');
-        submitBtn.innerText = "⏳ Saving...";
-        submitBtn.disabled = true;
-
-        const itemData = {
-            id: editModeId ? editModeId : Date.now(),
-            poNo: document.getElementById('poNo').value.trim().toUpperCase(),
-            mpn: document.getElementById('mpn').value.trim().toUpperCase(),
-            dom: document.getElementById('dom').value,
-            stockIn: parseInt(document.getElementById('stockIn').value) || 0,
-            stockOut: parseInt(document.getElementById('stockOut').value) || 0
-        };
-
-        const payload = {
-            action: editModeId ? "edit" : "add",
-            item: itemData
-        };
-
-        try {
-            await fetch(GOOGLE_APP_URL, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify(payload)
-            });
-            
-            await fetchCloudData();
-            cancelEdit(); 
-            alert(editModeId ? "Cloud Record Updated Successfully!" : "Saved to Google Sheets Successfully!");
-        } catch (error) {
-            console.error(error);
-            alert("Error saving data! Ensure you are running this from GitHub Pages, not your local C:/ drive.");
-        }
-
-        submitBtn.innerText = "Save to Cloud";
-        submitBtn.disabled = false;
-    });
-
-    // --- EDIT SYSTEM ---
-    function editItem(id) {
-        const item = inventory.find(i => i.id == id);
-        if(!item) return;
-
-        editModeId = item.id;
-        document.getElementById('poNo').value = item.poNo;
-        document.getElementById('mpn').value = item.mpn;
-        document.getElementById('dom').value = item.dom;
-        document.getElementById('stockIn').value = item.stockIn;
-        document.getElementById('stockOut').value = item.stockOut;
-
-        document.getElementById('formTitle').innerText = "✏️ Edit Mode (Deviation)";
-        document.getElementById('submitBtn').innerText = "Update Cloud Record";
-        document.getElementById('submitBtn').style.background = "var(--warning)";
-        document.getElementById('submitBtn').style.color = "black";
-        document.getElementById('cancelEditBtn').style.display = "block";
-        
-        window.scrollTo({ top: 0, behavior: 'smooth' }); 
-    }
-
-    function cancelEdit() {
-        editModeId = null;
-        document.getElementById('batteryForm').reset();
-        document.getElementById('stockIn').value = 0;
-        document.getElementById('stockOut').value = 0;
-        
-        document.getElementById('formTitle').innerText = "Add / Update Stock";
-        document.getElementById('submitBtn').innerText = "Save to Cloud";
-        document.getElementById('submitBtn').style.background = "var(--primary)";
-        document.getElementById('submitBtn').style.color = "white";
-        document.getElementById('cancelEditBtn').style.display = "none";
-    }
-
-    // --- PREVIEW SYSTEM ---
-    function previewItem(id) {
-        const item = inventory.find(i => i.id == id);
-        if(!item) return;
-
-        const today = new Date();
-        const expiryDate = new Date(item.dom);
-        expiryDate.setDate(expiryDate.getDate() + 180);
-        const remainingDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-        const safeStock = Number(item.availableStock) || 0;
-
-        let html = `
-            <div class="modal-row"><strong>PO No:</strong> <span>${item.poNo}</span></div>
-            <div class="modal-row"><strong>MPN:</strong> <span>${item.mpn}</span></div>
-            <div class="modal-row"><strong>DOM:</strong> <span>${item.dom}</span></div>
-            <div class="modal-row"><strong>Expiry Date:</strong> <span>${expiryDate.toISOString().split('T')[0]}</span></div>
-            <div class="modal-row"><strong>Days Remaining:</strong> <span>${remainingDays} Days</span></div>
-            <div class="modal-row"><strong>Total Stock In:</strong> <span>${item.stockIn}</span></div>
-            <div class="modal-row"><strong>Total Stock Out:</strong> <span>${item.stockOut}</span></div>
-            <div class="modal-row" style="background:#f3f4f6; padding:10px; font-size:18px;">
-                <strong>Available Stock:</strong> <span style="color:var(--primary); font-weight:bold;">${safeStock}</span>
-            </div>
-        `;
-        document.getElementById('modalDetails').innerHTML = html;
-        document.getElementById('previewModal').style.display = 'flex';
-    }
-
-    function closePreview() { document.getElementById('previewModal').style.display = 'none'; }
-
-    // --- RENDER DASHBOARD (WITH #NUM! FIX) ---
-    document.getElementById('searchInput').addEventListener('input', renderDashboard);
-
-    function renderDashboard() {
-        const tbody = document.getElementById('inventoryTable');
-        const searchTerm = document.getElementById('searchInput').value.trim().toUpperCase();
-        tbody.innerHTML = '';
-
-        let totalAvailable = 0, expiringSoonCount = 0, expiredCount = 0;
-        const today = new Date();
-
-        // Step 1: Filter out bad/empty rows & apply Search term
-        const filtered = inventory.filter(item => {
-            if (!item.poNo || item.poNo === "") return false; 
-            return item.poNo.toUpperCase().includes(searchTerm) || item.mpn.toUpperCase().includes(searchTerm);
-        });
-
-        filtered.forEach(item => {
-            // SAFE MATH: Converts bad #NUM! strings to 0
-            const availableStock = Number(item.availableStock) || 0; 
-            
-            const domDate = new Date(item.dom);
-            if (isNaN(domDate)) return; // Skip if Date is corrupted
-
-            const expiryDate = new Date(domDate);
-            expiryDate.setDate(expiryDate.getDate() + 180); 
-            const remainingDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-            
-            let statusText = '', badgeClass = '';
-
-            if (availableStock <= 0) {
-                statusText = 'Out of Stock'; badgeClass = 'badge-empty';
-            } else if (remainingDays < 0) {
-                statusText = '❌ Expired'; badgeClass = 'badge-danger'; 
-                expiredCount += availableStock;
-            } else if (remainingDays <= 30) {
-                statusText = '⚠️ Expiring Soon'; badgeClass = 'badge-warning'; 
-                expiringSoonCount += availableStock;
-            } else {
-                statusText = '✅ Healthy'; badgeClass = 'badge-healthy';
+                    // Industrial Filter: Only buds inside the machine (Strong Signal)
+                    // RSSI > -45 means very close
+                    if (rssi > -45) { 
+                        if (mac !== lastMAC) {
+                            lastMAC = mac;
+                            validateWithMaster(mac);
+                            clearTimeout(scanTimeout);
+                            // Auto reset after 6 seconds of signal loss
+                            scanTimeout = setTimeout(resetUI, 6000);
+                        }
+                    }
+                });
+                
+                document.getElementById('dispStatus').innerText = "SCANNING";
+            } catch (e) { 
+                alert("Error! Did you enable Chrome Flags?\n" + e.message); 
             }
+        }
 
-            totalAvailable += availableStock;
+        async function validateWithMaster(mac) {
+            try {
+                const file = await masterFileHandle.getFile();
+                const text = await file.text();
+                const rows = text.split('\n');
+                let verdict = "SKIP";
 
-            // Render Table Row
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.poNo}</td><td><strong>${item.mpn}</strong></td><td>${item.dom}</td>
-                <td><strong>${availableStock}</strong></td><td>${expiryDate.toISOString().split('T')[0]}</td>
-                <td>${remainingDays} Days</td><td><span class="badge ${badgeClass}">${statusText}</span></td>
-                <td class="action-btns">
-                    <button class="btn-icon btn-preview" onclick="previewItem(${item.id})" title="Preview">👁️</button>
-                    <button class="btn-icon btn-edit" onclick="editItem(${item.id})" title="Edit / Deviation">✏️</button>
-                </td>`;
+                for (let i = rows.length - 1; i >= 0; i--) {
+                    if (rows[i].toUpperCase().includes(mac.toUpperCase())) {
+                        verdict = rows[i].toUpperCase().includes("PASS") ? "PASS" : "FAIL";
+                        break;
+                    }
+                }
+                showVerdict(mac, verdict);
+            } catch (e) { console.error("CSV Read Error"); }
+        }
+
+        function showVerdict(mac, res) {
+            const bg = document.getElementById('ui-body');
+            const status = document.getElementById('dispStatus');
+            document.getElementById('dispMac').innerText = mac;
             
-            if(availableStock > 0) tbody.appendChild(tr); 
-        });
+            if (res === "PASS") {
+                status.innerText = "PASS";
+                bg.className = "bg-pass";
+            } else if (res === "FAIL") {
+                status.innerText = "FAIL";
+                bg.className = "bg-fail";
+            } else {
+                status.innerText = "SKIP";
+                bg.className = "bg-skip";
+            }
+        }
 
-        // Update Dashboard Text Safely
-        document.getElementById('totalStock').innerText = totalAvailable;
-        document.getElementById('expiringSoon').innerText = expiringSoonCount;
-        document.getElementById('expiredStock').innerText = expiredCount;
-    }
-
-    // --- QR SCANNER ---
-    let html5QrcodeScanner = null;
-    document.getElementById('startScanBtn').addEventListener('click', function() {
-        document.getElementById('reader').style.display = 'block'; this.style.display = 'none';
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
-        html5QrcodeScanner.render((text) => { html5QrcodeScanner.clear(); document.getElementById('reader').style.display = 'none'; document.getElementById('startScanBtn').style.display = 'flex'; parseQRData(text); });
-    });
-
-    function parseQRData(data) {
-        let parsedPo = '', parsedMpn = '', parsedDom = '';
-        try { const obj = JSON.parse(data); parsedPo = obj.PO||obj.po; parsedMpn = obj.MPN||obj.mpn; parsedDom = obj.DOM||obj.dom; } 
-        catch (e) { data.split(/[\n,;]/).forEach(line => { const parts = line.split(/[:=]/).map(s=>s.trim()); if(parts[0].toUpperCase().includes("PO")) parsedPo=parts[1]; if(parts[0].toUpperCase().includes("MPN")) parsedMpn=parts[1]; if(parts[0].toUpperCase().includes("DOM")) parsedDom=parts[1]; }); }
-        if (parsedPo) document.getElementById('poNo').value = parsedPo; if (parsedMpn) document.getElementById('mpn').value = parsedMpn;
-        if (parsedDom) { const p = parsedDom.split(/[-/]/); if(p.length===3) { document.getElementById('dom').value = p[2].length===4 ? `${p[2]}-${p[1]}-${p[0]}` : `${p[0]}-${p[1]}-${p[2]}`; } else document.getElementById('dom').value = parsedDom; }
-        document.getElementById('stockIn').focus();
-    }
-
-    // Load data on startup
-    fetchCloudData(); 
-</script>
+        function resetUI() {
+            document.getElementById('ui-body').className = "bg-ready";
+            document.getElementById('dispStatus').innerText = "READY";
+            document.getElementById('dispMac').innerText = "Waiting for scan...";
+            lastMAC = "";
+        }
+    </script>
 </body>
 </html>
